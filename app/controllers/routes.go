@@ -48,7 +48,7 @@ var (
 			Name: "http_requests_total",
 			Help: "Total number of HTTP requests",
 		},
-		[]string{"status"},
+		[]string{"status", "endpoint"},
 	)
 
 	// Process uptime
@@ -67,6 +67,13 @@ var (
 		},
 		[]string{"type"},
 	)
+	httpRequestsByMethodAndEndpoint = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "http_requests_by_method_and_endpoint_total",
+			Help: "Total number of HTTP requests by method and endpoint",
+		},
+		[]string{"method", "endpoint"},
+	)
 )
 
 func init() {
@@ -77,21 +84,49 @@ func init() {
 	prometheus.MustRegister(httpRequestsTotal)
 	prometheus.MustRegister(processUptimeSeconds)
 	prometheus.MustRegister(loginErrors)
+	prometheus.MustRegister(httpRequestsByMethodAndEndpoint)
 
 }
 
 func MetricsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		httpRequestsTotal.With(prometheus.Labels{"method": r.Method, "endpoint": r.URL.Path}).Inc()
-		next.ServeHTTP(w, r)
+		// Create a responseWriter to capture the status code
+		rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+		next.ServeHTTP(rw, r)
+
+		// Capture status codes such as 404 and 500
+		status := rw.statusCode
+		if status == 0 {
+			status = http.StatusOK
+		}
+
+		// Increment the counter with the correct labels
+		httpRequestsTotal.With(prometheus.Labels{"status": http.StatusText(status), "endpoint": r.URL.Path}).Inc()
+		httpRequestsByMethodAndEndpoint.With(prometheus.Labels{"method": r.Method, "endpoint": r.URL.Path}).Inc()
 	})
+}
+
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.statusCode = code
+	rw.ResponseWriter.WriteHeader(code)
+}
+
+func (server *Server) NotFoundHandler(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "404 page not found", http.StatusNotFound)
 }
 
 func (server *Server) initializeRoutes() {
 	server.Router = mux.NewRouter()
+	server.Router.Use(MetricsMiddleware)
 	server.Router.HandleFunc("/", server.Home).Methods("GET")
 
 	server.Router.HandleFunc("/login", server.Login).Methods("GET")
+	server.Router.NotFoundHandler = http.HandlerFunc(server.NotFoundHandler)
 	server.Router.HandleFunc("/login", server.DoLogin).Methods("POST")
 	server.Router.HandleFunc("/register", server.Register).Methods("GET")
 	server.Router.HandleFunc("/register", server.DoRegister).Methods("POST")

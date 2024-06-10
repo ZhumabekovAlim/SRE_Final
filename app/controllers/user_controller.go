@@ -23,6 +23,7 @@ func (server *Server) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (server *Server) DoLogin(w http.ResponseWriter, r *http.Request) {
+
 	email := r.FormValue("email")
 	password := r.FormValue("password")
 
@@ -32,7 +33,7 @@ func (server *Server) DoLogin(w http.ResponseWriter, r *http.Request) {
 		loginErrors.WithLabelValues("invalid_email").Inc()
 		flash.SetFlash(w, r, "error", "email or password invalid")
 		w.WriteHeader(http.StatusInternalServerError) // Set status code 500
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		http.Redirect(w, r, "/login", http.StatusInternalServerError)
 		return
 	}
 
