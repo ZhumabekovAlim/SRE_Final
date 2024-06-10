@@ -1,0 +1,42 @@
+stages:
+  - build
+  - test
+  - deploy
+
+variables:
+  APP_NAME: sre_final
+
+before_script:
+  - apt-get update -qq && apt-get install -y -qq docker.io
+
+build:
+  stage: build
+  script:
+    - echo "Building the application..."
+    - go build -o $APP_NAME .
+
+unit_test:
+  stage: test
+  script:
+    - echo "Running unit tests..."
+    - go test ./...
+
+integration_test:
+  stage: test
+  script:
+    - echo "Running integration tests..."
+    - go test -tags=integration ./...
+
+deploy_staging:
+  stage: deploy
+  script:
+    - echo "Deploying to staging environment..."
+    - ./deploy.sh staging
+
+deploy_production:
+  stage: deploy
+  script:
+    - echo "Deploying to production environment..."
+    - ./deploy.sh production
+  only:
+    - master
